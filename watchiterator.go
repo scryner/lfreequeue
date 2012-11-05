@@ -13,19 +13,21 @@ func (w *watchIterator) Iter() <-chan interface{} {
 
 func (w *watchIterator) watchAndIterate(c chan<- interface{}) {
 	for {
-		datum, ok := queue.Dequeue()
+		datum, ok := w.queue.Dequeue()
 
 		if !ok {
-			notify := queue.WatchWakeup()
+			notify := w.queue.WatchWakeup()
 
 			select {
 			case <-notify:
 				continue
-			case <-quit:
+			case <-w.quit:
+				go func() {
+					<-notify
+				}()
 				goto endIteration
 			}
 
-			<-queue.WatchWakeup()
 		} else {
 			c <- datum
 		}

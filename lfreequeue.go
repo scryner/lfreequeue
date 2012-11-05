@@ -24,7 +24,7 @@ func NewQueue() *Queue {
 	q.dummy = new(Node)
 	q.tail = q.dummy
 
-	wakeUpNotifiesLock = new(sync.Mutex)
+	q.wakeUpNotifiesLock = new(sync.Mutex)
 
 	return q
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 	"sync"
+	"time"
 )
 
 const dataLen = 10000
@@ -221,6 +222,81 @@ func TestIter(t *testing.T) {
 
 		if s != datum2 {
 			t.Errorf("not matched: %v, %v", s, datum2)
+		}
+	}
+}
+
+func TestWatchIterator(t *testing.T) {
+	watchIterator := q.NewWatchIterator()
+	iter := watchIterator.Iter()
+	defer watchIterator.Close()
+
+	timeout := time.After(time.Second * 1)
+	var timeouted bool
+
+	select {
+	case <-iter:
+		timeouted = false
+	case <-timeout:
+		timeouted = true
+	}
+
+	if !timeouted {
+		t.Errorf("it must be timeouted, because queue may be empty")
+		return
+	}
+
+	var poped []int
+	var wg sync.WaitGroup
+
+	// consumer
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		until := time.After(time.Second * 1)
+
+		for {
+			select {
+			case <-until:
+				return
+			case v := <-iter:
+				poped = append(poped, v.(int))
+			}
+		}
+	}()
+
+	// producer
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		interval := time.Millisecond * 300
+
+		for i := 0; i < 5; i++ {
+			q.Enqueue(i)
+			time.Sleep(interval)
+		}
+	}()
+
+	wg.Wait()
+
+	for i := 0; i < 3; i++ {
+		if i != poped[i] {
+			t.Errorf("poped elements invalid: %d (expected %d)", poped[i], i)
+			return
+		}
+	}
+
+	timeout = time.After(time.Millisecond * 200)
+	select {
+	case <-timeout:
+	case v := <-iter:
+		poped = append(poped, v.(int))
+	}
+
+	for i := 0; i < 5; i++ {
+		if i != poped[i] {
+			t.Errorf("poped elements invalid: %d (expected %d)", poped[i], i)
+			return
 		}
 	}
 }
