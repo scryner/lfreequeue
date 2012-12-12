@@ -38,5 +38,7 @@ endIteration:
 }
 
 func (w *watchIterator) Close() {
-	w.quit <- 1
+	go func(){
+		w.quit <- 1
+	}()
 }
