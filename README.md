@@ -54,7 +54,7 @@ lfreequeue provides iterator. You can use iterator just as a common 'for' loop s
 
 ## Example 3: watch iterator
 Watch iterator is almost same as iterator, except it would not close channel.
-It is useful to producer and consumer pattern.
+It is useful for producer and consumer pattern.
 
 	q := lfreequeue.NewQueue()
 
