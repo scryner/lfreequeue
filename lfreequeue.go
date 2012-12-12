@@ -2,37 +2,32 @@ package lfreequeue
 
 import (
 	"unsafe"
-	"sync"
 	"sync/atomic"
 )
 
-type Node struct {
+// private structure
+type node struct {
 	value interface{}
-	next *Node
+	next *node
 }
 
-type Queue struct {
-	dummy *Node
-	tail *Node
-	
-	wakeUpNotifiesLock *sync.Mutex
-	wakeUpNotifies []chan int
+type queue struct {
+	dummy *node
+	tail *node
 }
 
-func NewQueue() *Queue {
-	q := new(Queue)
-	q.dummy = new(Node)
+func newQueue() *queue {
+	q := new(queue)
+	q.dummy = new(node)
 	q.tail = q.dummy
-
-	q.wakeUpNotifiesLock = new(sync.Mutex)
 
 	return q
 }
 
-func (q *Queue) Enqueue(v interface{}) {
-	var oldTail, oldTailNext *Node
+func (q *queue) enqueue(v interface{}) {
+	var oldTail, oldTailNext *node
 
-	newNode := new(Node)
+	newNode := new(node)
 	newNode.value = v
 
 	newNodeAdded := false
@@ -54,21 +49,11 @@ func (q *Queue) Enqueue(v interface{}) {
 	}
 
 	atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&q.tail)), unsafe.Pointer(oldTail), unsafe.Pointer(newNode))
-
-	// notify
-	q.wakeUpNotifiesLock.Lock()
-	toNotifies := q.wakeUpNotifies
-	q.wakeUpNotifies = []chan int{}
-	q.wakeUpNotifiesLock.Unlock()
-
-	for _, notify := range toNotifies {
-		notify <- 1
-	}
 }
 
-func (q *Queue) Dequeue() (interface{}, bool) {
+func (q *queue) dequeue() (interface{}, bool) {
 	var temp interface{}
-	var oldDummy, oldHead *Node
+	var oldDummy, oldHead *node
 
 	removed := false
 
@@ -97,9 +82,9 @@ func (q *Queue) Dequeue() (interface{}, bool) {
 	return temp, true
 }
 
-func (q *Queue) iterate(c chan<- interface{}) {
+func (q *queue) iterate(c chan<- interface{}) {
 	for {
-		datum, ok := q.Dequeue()
+		datum, ok := q.dequeue()
 		if !ok {
 			break
 		}
@@ -109,19 +94,49 @@ func (q *Queue) iterate(c chan<- interface{}) {
 	close(c)
 }
 
-func (q *Queue) Iter() <-chan interface{} {
+func (q *queue) iter() <-chan interface{} {
 	c := make(chan interface{})
 	go q.iterate(c)
 	return c
 }
 
-func (q *Queue) WatchWakeup() <-chan int {
+// Public structure
+type Queue struct {
+	q *queue
+	wakeUpNotifiesQueue *queue
+}
+
+func NewQueue() *Queue {
+	return &Queue{
+		q: newQueue(),
+		wakeUpNotifiesQueue: newQueue(),
+	}
+}
+
+func (q *Queue) Enqueue(v interface{}) {
+	q.q.enqueue(v)
+
+	// notify
+	for notify := range q.wakeUpNotifiesQueue.iter() {
+		notify2 := notify.(chan int)
+
+		go func(){
+			notify2 <- 1
+		}()
+	}
+}
+
+func (q *Queue) Dequeue() (interface{}, bool) {
+	return q.q.dequeue()
+}
+
+func (q *Queue) Iter() <-chan interface{} {
+	return q.q.iter()
+}
+
+func (q *Queue) Watch() <-chan int {
 	c := make(chan int)
-
-	q.wakeUpNotifiesLock.Lock()
-	defer q.wakeUpNotifiesLock.Unlock()
-
-	q.wakeUpNotifies = append(q.wakeUpNotifies, c)
+	q.wakeUpNotifiesQueue.enqueue(c)
 
 	return c
 }

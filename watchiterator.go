@@ -16,7 +16,7 @@ func (w *watchIterator) watchAndIterate(c chan<- interface{}) {
 		datum, ok := w.queue.Dequeue()
 
 		if !ok {
-			notify := w.queue.WatchWakeup()
+			notify := w.queue.Watch()
 
 			select {
 			case <-notify:
